@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Program 3 - Webcam Diamond Texture</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #eee;
+        }
+
+        #mainBox {
+            display: flex;
+            gap: 15px;
+            padding: 15px;
+        }
+
+        canvas {
+            border: 1px solid black;
+            background: #777;
+        }
+
+        #controls {
+            width: 300px;
+            background: white;
+            padding: 12px;
+            border: 1px solid #bbb;
+        }
+
+        .controlLine {
+            margin-bottom: 12px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+        }
+
+        input, select {
+            width: 100%;
+        }
+
+        button {
+            margin-top: 8px;
+            width: 100%;
+            padding: 8px;
+        }
+
+        #lockdownButton {
+            background: #300;
+            color: white;
+            border: 1px solid #900;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+<div id="mainBox">
+    <div>
+        <canvas id="gl-canvas" width="700" height="500">
+            Your browser does not support canvas.
+        </canvas>
+
+        <video id="webcamVideo" style="display: none;"></video>
+    </div>
+
+    <div id="controls">
+        <h3>Texture Diamond Controls</h3>
+
+        <div class="controlLine">
+            <label>Theta / left-right view</label>
+            <input id="thetaSlider" type="range" min="-180" max="180" value="25">
+        </div>
+
+        <div class="controlLine">
+            <label>Phi / up-down view</label>
+            <input id="phiSlider" type="range" min="-70" max="70" value="15">
+        </div>
+
+        <div class="controlLine">
+            <label>Camera distance</label>
+            <input id="distSlider" type="range" min="3" max="9" step="0.1" value="5.2">
+        </div>
+
+        <div class="controlLine">
+            <label>Texture effect amount</label>
+            <input id="effectSlider" type="range" min="0" max="1" step="0.01" value="0.55">
+        </div>
+
+        <div class="controlLine">
+            <label>Wall texture</label>
+            <select id="wallTextureSelect">
+                <option value="0">Wood</option>
+                <option value="1">Metal</option>
+                <option value="2">Stone</option>
+                <option value="3">Carpet</option>
+                <option value="4">Uploaded Image</option>
+            </select>
+        </div>
+
+        <div class="controlLine">
+            <label>Upload wall texture image</label>
+            <input id="wallFile" type="file" accept="image/*">
+        </div>
+
+        <div class="controlLine">
+            <label>Diamond spin speed</label>
+            <input id="spinSlider" type="range" min="0" max="3" step="0.05" value="0.55">
+        </div>
+
+        <div class="controlLine">
+            <label>Diamond left / right position</label>
+            <input id="diamondXSlider" type="range" min="-2.5" max="2.5" step="0.05" value="0">
+        </div>
+
+        <div class="controlLine">
+            <label>Diamond up / down position</label>
+            <input id="diamondYSlider" type="range" min="-1.5" max="1.5" step="0.05" value="0">
+        </div>
+
+        <div class="controlLine">
+            <label>Diamond forward / backward position</label>
+            <input id="diamondZSlider" type="range" min="-2.0" max="2.0" step="0.05" value="0">
+        </div>
+
+        <div class="controlLine">
+            <label>
+                <input id="spinCheck" type="checkbox" checked style="width:auto;">
+                Spin diamond
+            </label>
+        </div>
+
+        <button id="lockdownButton">Lockdown</button>
+        <button id="resetButton">Reset View</button>
+    </div>
+</div>
+
+<script id="vertex-shader" type="x-shader/x-vertex">
+#version 300 es
+
+in vec4 aPosition;
+in vec3 aNormal;
+in vec2 aTexCoord;
+in float aEffectNumber;
+
+uniform mat4 uModelViewMatrix;
+uniform mat4 uProjectionMatrix;
+uniform mat3 uNormalMatrix;
+
+out vec3 vNormal;
+out vec3 vPosition;
+out vec2 vTexCoord;
+out float vEffectNumber;
+
+void main()
+{
+    vec4 pos = uModelViewMatrix * aPosition;
+
+    vPosition = pos.xyz;
+    vNormal = normalize(uNormalMatrix * aNormal);
+    vTexCoord = aTexCoord;
+    vEffectNumber = aEffectNumber;
+
+    gl_Position = uProjectionMatrix * pos;
+}
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+#version 300 es
+
+precision mediump float;
+
+in vec3 vNormal;
+in vec3 vPosition;
+in vec2 vTexCoord;
+in float vEffectNumber;
+
+uniform sampler2D uWebcamTexture;
+uniform sampler2D uWallImageTexture;
+
+uniform float uTime;
+uniform float uEffectAmount;
+uniform int uWallMode;
+
+out vec4 fColor;
+
+float myNoise(vec2 p)
+{
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float smoothNoise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+
+    float a = myNoise(i);
+    float b = myNoise(i + vec2(1.0, 0.0));
+    float c = myNoise(i + vec2(0.0, 1.0));
+    float d = myNoise(i + vec2(1.0, 1.0));
+
+    vec2 u = f * f * (3.0 - 2.0 * f);
+
+    return mix(a, b, u.x) +
+           (c - a) * u.y * (1.0 - u.x) +
+           (d - b) * u.x * u.y;
+}
+
+vec3 phongLight(vec3 baseColor, float shinyExtra)
+{
+    vec3 N = normalize(vNormal);
+
+    vec3 lightPos = vec3(2.5, 3.5, 4.0);
+    vec3 L = normalize(lightPos - vPosition);
+    vec3 E = normalize(-vPosition);
+    vec3 H = normalize(L + E);
+
+    float Kd = max(dot(N, L), 0.0);
+    float Ks = pow(max(dot(N, H), 0.0), 35.0);
+
+    vec3 ambient = 0.25 * baseColor;
+    vec3 diffuse = Kd * baseColor;
+    vec3 specular = (0.25 + shinyExtra) * Ks * vec3(1.0, 1.0, 1.0);
+
+    return ambient + diffuse + specular;
+}
+
+vec3 getWebcam(vec2 st)
+{
+    st = clamp(st, 0.001, 0.999);
+    return texture(uWebcamTexture, st).rgb;
+}
+
+vec3 woodTexture(vec2 st)
+{
+    vec2 p = st * vec2(7.0, 3.0);
+
+    float grain = sin(p.y * 28.0 + sin(p.x * 5.0) * 2.0);
+    grain += 0.35 * sin(p.y * 65.0 + p.x * 2.0);
+    grain += 0.20 * smoothNoise(p * 3.0);
+    grain = 0.5 + 0.5 * grain;
+
+    vec3 darkWood = vec3(0.18, 0.09, 0.025);
+    vec3 midWood = vec3(0.45, 0.23, 0.08);
+    vec3 lightWood = vec3(0.72, 0.43, 0.16);
+
+    vec3 c = mix(darkWood, midWood, grain);
+    c = mix(c, lightWood, smoothstep(0.68, 1.0, grain));
+
+    return c;
+}
+
+vec3 metalTexture(vec2 st)
+{
+    vec2 p = st * 12.0;
+
+    float scratches = smoothNoise(vec2(p.x * 8.0, p.y * 0.7));
+    float bands = 0.5 + 0.5 * sin(st.y * 90.0 + scratches * 2.0);
+    float shine = smoothstep(0.55, 1.0, bands);
+
+    vec3 base = vec3(0.34, 0.36, 0.37);
+    vec3 bright = vec3(0.75, 0.78, 0.80);
+
+    return mix(base, bright, 0.35 * shine);
+}
+
+vec3 stoneTexture(vec2 st)
+{
+    vec2 p = st * 6.0;
+
+    float n1 = smoothNoise(p);
+    float n2 = smoothNoise(p * 2.0 + 13.0);
+    float n3 = smoothNoise(p * 4.0 + 4.0);
+
+    float rock = 0.50 * n1 + 0.30 * n2 + 0.20 * n3;
+
+    vec3 darkStone = vec3(0.20, 0.20, 0.19);
+    vec3 lightStone = vec3(0.55, 0.54, 0.50);
+    vec3 c = mix(darkStone, lightStone, rock);
+
+    float cracks = smoothstep(0.46, 0.50, abs(fract(p.x + n2 * 0.25) - 0.5));
+    cracks *= smoothstep(0.46, 0.50, abs(fract(p.y + n1 * 0.25) - 0.5));
+
+    c *= 0.75 + 0.25 * cracks;
+
+    return c;
+}
+
+vec3 carpetTexture(vec2 st)
+{
+    vec2 p = st * 45.0;
+
+    float n = smoothNoise(p);
+    float thread1 = 0.5 + 0.5 * sin(st.x * 180.0);
+    float thread2 = 0.5 + 0.5 * sin(st.y * 160.0);
+
+    vec3 base = vec3(0.22, 0.05, 0.08);
+    vec3 fuzz = vec3(0.55, 0.16, 0.20);
+
+    float weave = 0.35 * thread1 + 0.35 * thread2 + 0.30 * n;
+
+    return mix(base, fuzz, weave);
+}
+
+vec3 wallTexture(vec2 st)
+{
+    if (uWallMode == 0) {
+        return woodTexture(st);
+    }
+    else if (uWallMode == 1) {
+        return metalTexture(st);
+    }
+    else if (uWallMode == 2) {
+        return stoneTexture(st);
+    }
+    else if (uWallMode == 3) {
+        return carpetTexture(st);
+    }
+    else {
+        return texture(uWallImageTexture, st).rgb;
+    }
+}
+
+vec3 embossLook(vec2 st)
+{
+    ivec2 size = textureSize(uWebcamTexture, 0);
+    float resS = float(size.x);
+    float resT = float(size.y);
+
+    vec2 stepOne = vec2(1.0 / resS, 1.0 / resT);
+
+    vec3 c00 = getWebcam(st);
+    vec3 c11 = getWebcam(st + stepOne * 2.0);
+
+    vec3 diffs = c00 - c11;
+    float gray = max(max(diffs.r, diffs.g), diffs.b);
+    gray = clamp(gray + 0.5, 0.0, 1.0);
+
+    return mix(vec3(gray), gray * c00, 0.45);
+}
+
+vec3 faceEffect(vec2 st)
+{
+    float e = floor(vEffectNumber + 0.5);
+    vec3 rgb = getWebcam(st);
+
+    if (e == 0.0) {
+        return vec3(1.0, 1.0, 1.0) - rgb;
+    }
+    else if (e == 1.0) {
+        float lum = dot(rgb, vec3(0.2125, 0.7154, 0.0721));
+        float stripe = 0.5 + 0.5 * sin((st.y + st.x) * 35.0 + uTime * 2.0);
+
+        vec3 metal = vec3(lum) * vec3(0.70, 0.78, 0.88);
+        metal += stripe * 0.12;
+
+        return metal;
+    }
+    else if (e == 2.0) {
+        vec2 d = st;
+
+        d.x += sin(st.y * 18.0 + uTime * 2.0) * 0.10 * uEffectAmount;
+        d.y += cos(st.x * 14.0 + uTime * 1.5) * 0.08 * uEffectAmount;
+
+        return getWebcam(d);
+    }
+    else if (e == 3.0) {
+        float lum = dot(rgb, vec3(0.2125, 0.7154, 0.0721));
+        vec3 blue = vec3(0.08 * lum, 0.35 * lum + 0.10, 1.15 * lum + 0.15);
+
+        return mix(rgb, blue, 0.75);
+    }
+    else if (e == 4.0) {
+        return embossLook(st);
+    }
+    else if (e == 5.0) {
+        float levels = 4.0;
+        return floor(rgb * levels) / levels;
+    }
+    else if (e == 6.0) {
+        vec3 contrast = (rgb - vec3(0.5)) * (1.0 + 1.5 * uEffectAmount) + vec3(0.5);
+        contrast *= vec3(1.25, 0.85, 0.55);
+
+        return clamp(contrast, 0.0, 1.0);
+    }
+    else {
+        float scan = step(0.5, fract(st.y * 35.0 + uTime * 2.0));
+
+        vec2 shiftST = st;
+        shiftST.x += 0.04 * sin(st.y * 40.0 + uTime * 4.0) * uEffectAmount;
+
+        vec3 a = getWebcam(shiftST);
+        vec3 b = vec3(a.r, getWebcam(st + vec2(0.02, 0.0)).g, a.b);
+
+        return mix(a, b * (0.75 + 0.25 * scan), 0.85);
+    }
+}
+
+void main()
+{
+    vec3 finalColor;
+
+    // -1 means wall, selected from dropdown
+    if (vEffectNumber < -0.5 && vEffectNumber > -1.5) {
+        finalColor = phongLight(wallTexture(vTexCoord), 0.08);
+    }
+
+    // -3 means floor, always procedural stone
+    else if (vEffectNumber < -2.5 && vEffectNumber > -3.5) {
+        finalColor = phongLight(stoneTexture(vTexCoord * 2.0), 0.04);
+    }
+
+    // -2 means laser geometry
+    else if (vEffectNumber <= -1.5) {
+        float pulse = 0.65 + 0.35 * sin(uTime * 8.0);
+        finalColor = vec3(1.0, 0.05, 0.02) * pulse;
+    }
+
+    // webcam diamond faces
+    else {
+        finalColor = faceEffect(vTexCoord);
+
+        float shiny = 0.0;
+        if (floor(vEffectNumber + 0.5) == 1.0) {
+            shiny = 0.85;
+        }
+
+        finalColor = phongLight(finalColor, shiny);
+    }
+
+    fColor = vec4(clamp(finalColor, 0.0, 1.0), 1.0);
+}
+</script>
+
+<script src="initShaders-1.js"></script>
+<script src="MVnew-1.js"></script>
+<script src="CG_S26_Project3_SumabonSasha.js"></script>
+
+</body>
+</html>

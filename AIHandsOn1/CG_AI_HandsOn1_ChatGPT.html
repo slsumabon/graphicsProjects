@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Red Triangle (WebGL 2 / OpenGL ES 3.0)</title>
+  <style>
+    html, body { height: 100%; margin: 0; display: grid; place-items: center; background: #111; }
+    canvas { border: 1px solid #333; background: #000; }
+    .hint { color: #bbb; font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin-top: 10px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div>
+    <canvas id="glcanvas" width="400" height="400" aria-label="WebGL Canvas"></canvas>
+    <div class="hint">400×400 canvas • Red isosceles triangle (height 200px, base 150px)</div>
+  </div>
+
+  <!-- Vertex Shader (OpenGL ES 3.0 / GLSL ES 3.00) -->
+  <script id="vs" type="x-shader/x-vertex">
+#version 300 es
+in vec2 aPosition;
+
+void main() {
+  gl_Position = vec4(aPosition, 0.0, 1.0);
+}
+  </script>
+
+  <!-- Fragment Shader (OpenGL ES 3.0 / GLSL ES 3.00) -->
+  <script id="fs" type="x-shader/x-fragment">
+#version 300 es
+precision mediump float;
+
+out vec4 outColor;
+
+void main() {
+  outColor = vec4(1.0, 0.0, 0.0, 1.0); // solid red
+}
+  </script>
+
+  <script>
+    // --- Setup WebGL2 context ---
+    const canvas = document.getElementById("glcanvas");
+    const gl = canvas.getContext("webgl2");
+    if (!gl) {
+      alert("WebGL 2.0 is not supported in this browser.");
+      throw new Error("WebGL2 not supported");
+    }
+
+    // --- Helpers: compile + link shaders ---
+    function compileShader(type, source) {
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, source);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        const log = gl.getShaderInfoLog(sh);
+        gl.deleteShader(sh);
+        throw new Error("Shader compile failed:\n" + log);
+      }
+      return sh;
+    }
+
+    function createProgram(vsSource, fsSource) {
+      const vs = compileShader(gl.VERTEX_SHADER, vsSource);
+      const fs = compileShader(gl.FRAGMENT_SHADER, fsSource);
+
+      const prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        const log = gl.getProgramInfoLog(prog);
+        gl.deleteProgram(prog);
+        throw new Error("Program link failed:\n" + log);
+      }
+      return prog;
+    }
+
+    const vsSource = document.getElementById("vs").textContent.trim();
+    const fsSource = document.getElementById("fs").textContent.trim();
+    const program = createProgram(vsSource, fsSource);
+    gl.useProgram(program);
+
+    // --- Triangle geometry in pixels, centered in a 400×400 canvas ---
+    // Height: 200px (apex at +100, base at -100 relative to center)
+    // Base width: 150px (left/right at -75/+75 relative to center)
+    //
+    // Convert pixels -> NDC:
+    //   x_ndc = x_pixels / (canvasWidth/2)  = x / 200
+    //   y_ndc = y_pixels / (canvasHeight/2) = y / 200
+    const w2 = canvas.width / 2;   // 200
+    const h2 = canvas.height / 2;  // 200
+
+    const apex      = [  0 / w2,  100 / h2]; // (0, +100)
+    const baseLeft  = [-75 / w2, -100 / h2]; // (-75, -100)
+    const baseRight = [ 75 / w2, -100 / h2]; // (+75, -100)
+
+    const vertices = new Float32Array([
+      apex[0],     apex[1],
+      baseLeft[0], baseLeft[1],
+      baseRight[0],baseRight[1],
+    ]);
+
+    // --- Upload vertex data ---
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+    const posLoc = gl.getAttribLocation(program, "aPosition");
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    // --- Draw ---
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.bindVertexArray(vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // Cleanup bindings (optional)
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+  </script>
+</body>
+</html>

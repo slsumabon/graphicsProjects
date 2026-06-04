@@ -1,0 +1,269 @@
+<html>
+
+<!-- VERTEX SHADER SOURCE CODE: Written in GLSL -->
+<script id="vertex-shader" type="x-shader/x-vertex">
+#version 300 es
+
+in vec4 aPosition;
+out vec2 vPosition;
+
+void main()
+{
+  gl_Position = aPosition;
+  vPosition = aPosition.xy;
+}
+</script>
+
+<!-- VERTEX SHADER SOURCE CODE: Written in GLSL -->
+<script id="vertex-shader2" type="x-shader/x-vertex">
+#version 300 es
+
+in vec4 aPosition;
+out vec2 vPosition;
+
+void main()
+{
+    gl_Position = aPosition;
+    vPosition = aPosition.xy;
+}
+</script>
+
+<script id="vertex-shader3" type="x-shader/x-vertex">
+#version 300 es
+
+in vec4 aPosition;
+out vec2 vPosition;
+
+void main()
+{
+    gl_Position = aPosition;
+    vPosition = aPosition.xy;
+}
+</script>
+
+<!-- FRAGMENT SHADER SOURCE CODE: Written in GLSL -->
+<script id="fragment-shader" type="x-shader/x-fragment">
+#version 300 es
+
+precision mediump float;
+
+in vec2 vPosition;
+out vec4  fColor;
+
+void main()
+{
+    // Normalize position from [-1,1] to [0,1]
+    vec2 normalized = (vPosition + 1.0) / 2.0;
+
+    // Gradient square color
+    fColor = vec4(normalized.x, normalized.y, 1.0 - normalized.x, 1.0);
+}
+</script>
+
+<script id="fragment-shader2" type="x-shader/x-fragment">
+#version 300 es
+
+precision mediump float;
+
+in vec2 vPosition;
+out vec4 fColor;
+
+void main()
+{
+    // Circle center (in clip space)
+    vec2 center = vec2(0.0, 0.0);
+    float radius = 0.3;
+
+    float dist = distance(vPosition, center);
+
+    if (dist < radius) {
+
+        // Radial gradient inside circle
+        float t = dist / radius;
+        fColor = vec4(1.0 - t, 0.0, t, 1.0);
+
+    } else {
+
+        discard;
+
+    }
+}
+</script>
+
+<script id="fragment-shader3" type="x-shader/x-fragment">
+#version 300 es
+
+precision mediump float;
+
+in vec2 vPosition;
+out vec4 fColor;
+
+void main()
+{
+    // Circle center (in clip space)
+    vec2 center = vec2(0.0, 0.0);
+    float radius = 0.1;
+
+    float dist = distance(vPosition, center);
+
+    if (dist < radius) {
+
+        // Radial gradient inside circle
+        float t = dist / radius;
+        fColor = vec4(1.0 - t, 0.0, t, 1.0);
+
+    } else {
+
+        discard;
+
+    }
+}
+</script>
+
+
+<canvas id="gl-canvas" width="512" height="512"> </canvas>
+
+<!-- Written in Javascript -->
+<script>
+
+// This compiles and links the shaders to create a GPU program object
+// The GLSL code above is parsed and provided as the source code
+function initShaders( gl, vertexShaderId, fragmentShaderId )
+{
+    var vertShdr;
+    var fragShdr;
+
+    var vertElem = document.getElementById( vertexShaderId );
+    if ( !vertElem ) {
+        alert( "Unable to load vertex shader " + vertexShaderId );
+        return -1;
+    }
+    else {
+        vertShdr = gl.createShader( gl.VERTEX_SHADER );
+        gl.shaderSource( vertShdr, vertElem.textContent.replace(/^\s+|\s+$/g, '' ));
+        gl.compileShader( vertShdr );
+        if ( !gl.getShaderParameter(vertShdr, gl.COMPILE_STATUS) ) {
+            alert( gl.getShaderInfoLog( vertShdr ) );
+            return -1;
+        }
+    }
+
+    var fragElem = document.getElementById( fragmentShaderId );
+    if ( !fragElem ) {
+        alert( "Unable to load fragment shader " + fragmentShaderId );
+        return -1;
+    }
+    else {
+        fragShdr = gl.createShader( gl.FRAGMENT_SHADER );
+        gl.shaderSource( fragShdr, fragElem.textContent.replace(/^\s+|\s+$/g, '' ) );
+        gl.compileShader( fragShdr );
+        if ( !gl.getShaderParameter(fragShdr, gl.COMPILE_STATUS) ) {
+            alert( gl.getShaderInfoLog( fragShdr ) );
+            return -1;
+        }
+    }
+
+    var program = gl.createProgram();
+    gl.attachShader( program, vertShdr );
+    gl.attachShader( program, fragShdr );
+    gl.linkProgram( program );
+
+    if ( !gl.getProgramParameter(program, gl.LINK_STATUS) ) {
+        alert( gl.getProgramInfoLog( program ) );
+        return -1;
+    }
+
+    return program;
+}
+
+
+// EXECUTION: Code executes starting here when we launch this file
+window.onload = function init()
+{
+    canvas = document.getElementById( "gl-canvas" );
+
+    //
+    //   Grab the section of the screen for drawing.  
+    //   All graphic output is within the canvas
+    //
+    
+    gl = canvas.getContext('webgl2');
+    if (!gl) { alert( "WebGL 2.0 isn't available" ); }
+
+    //
+    //  Initialize our data for a single triangle
+    //
+
+    ////////////////////////////////////////////////////////////////////////////////  
+    //  Load shaders and initialize attribute buffers
+    //
+
+    var program1 = initShaders(gl, "vertex-shader", "fragment-shader");
+    var program2 = initShaders(gl, "vertex-shader2", "fragment-shader2");
+    var program3 = initShaders(gl, "vertex-shader3", "fragment-shader3");
+
+    ////////////////////////////////////////////////////////////////////////////////   
+    // Define shapes (initialize points defining a triangle)
+    // The GPU expects typed arrays and uses 4D points (x,y,z,w)
+   
+    var points = new Float32Array([  
+        -0.3, -0.3,
+         0.3, -0.3,
+         0.3,  0.3,
+
+        -0.3, -0.3,
+         0.3,  0.3,
+        -0.3,  0.3
+    ]);
+
+    ////////////////////////////////////////////////////////////////////////////////   
+    // Load the data into the GPU Buffers
+    //
+    var pointsBuffer = gl.createBuffer();
+    gl.bindBuffer( gl.ARRAY_BUFFER, pointsBuffer );
+    gl.bufferData( gl.ARRAY_BUFFER, points, gl.STATIC_DRAW );
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Configure WebGL settings and draw
+    //
+
+    // Configure area of canvas to map framebuffer
+    gl.viewport( 0,0, canvas.width, canvas.height ); 
+    
+    // Configure color to use to clear all pixels    
+    gl.clearColor( 0, 0, 0, 1.0 );   
+
+    // Clear all pixels in the framebuffer
+    gl.clear( gl.COLOR_BUFFER_BIT );     
+
+   
+    gl.useProgram(program1);
+
+    var aPosition1 = gl.getAttribLocation(program1, "aPosition");
+    gl.vertexAttribPointer(aPosition1, 2, gl.FLOAT, false, 0, 0);  
+    gl.enableVertexAttribArray(aPosition1);  
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);     
+
+
+    gl.useProgram(program2);
+
+    var aPosition2 = gl.getAttribLocation(program2, "aPosition");
+    gl.vertexAttribPointer(aPosition2, 2, gl.FLOAT, false, 0, 0);  
+    gl.enableVertexAttribArray(aPosition2);  
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);     
+
+    gl.useProgram(program3);
+
+    var aPosition3 = gl.getAttribLocation(program3, "aPosition");
+    gl.vertexAttribPointer(aPosition3, 2, gl.FLOAT, false, 0, 0);  
+    gl.enableVertexAttribArray(aPosition3);  
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6); 
+
+};
+
+</script>
+
+</html>

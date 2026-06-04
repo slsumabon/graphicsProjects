@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shading Models Demo</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .controls {
+      width: 700px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    canvas {
+      border: 1px solid #333;
+      background: black;
+    }
+
+    label, select, input {
+      font-size: 14px;
+    }
+
+    .note {
+      width: 700px;
+      color: #ccc;
+      font-size: 13px;
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <label for="shadingMenu">Shading Model:</label>
+    <select id="shadingMenu">
+      <option value="gouraud">Gouraud</option>
+      <option value="blinn">Blinn-Phong</option>
+      <option value="cook">Cook-Torrance</option>
+    </select>
+
+    <label for="rotationSlider">Rotation Speed</label>
+    <input id="rotationSlider" type="range" min="0" max="3" step="0.1" value="1.0" />
+  </div>
+
+  <canvas id="gl-canvas" width="700" height="520"></canvas>
+
+  <div class="note">
+    Same scene, same object, same light. The dropdown changes between three separate GPU shader programs.
+  </div>
+
+  <!-- Gouraud shaders -->
+  <script id="gouraud-vertex-shader" type="x-shader/x-vertex">#version 300 es
+  in vec4 aPosition;
+  in vec3 aNormal;
+
+  uniform mat4 uModelMatrix;
+  uniform mat4 uViewMatrix;
+  uniform mat4 uProjectionMatrix;
+  uniform mat3 uNormalMatrix;
+
+  uniform vec3 uLightPosition;
+  uniform vec3 uEyePosition;
+  uniform vec3 uAmbientColor;
+  uniform vec3 uDiffuseColor;
+  uniform vec3 uSpecularColor;
+  uniform vec3 uLightColor;
+  uniform float uShininess;
+
+  out vec3 vColor;
+
+  void main() {
+    vec4 worldPos4 = uModelMatrix * aPosition;
+    vec3 worldPos = worldPos4.xyz;
+    vec3 N = normalize(uNormalMatrix * aNormal);
+    vec3 L = normalize(uLightPosition - worldPos);
+    vec3 V = normalize(uEyePosition - worldPos);
+    vec3 H = normalize(L + V);
+
+    float diff = max(dot(N, L), 0.0);
+    float spec = 0.0;
+    if (diff > 0.0) {
+      spec = pow(max(dot(N, H), 0.0), uShininess);
+    }
+
+    vec3 ambient = uAmbientColor * 0.25;
+    vec3 diffuse = diff * uDiffuseColor * uLightColor;
+    vec3 specular = spec * uSpecularColor * uLightColor;
+
+    vColor = ambient + diffuse + specular;
+    gl_Position = uProjectionMatrix * uViewMatrix * worldPos4;
+  }
+  </script>
+
+  <script id="gouraud-fragment-shader" type="x-shader/x-fragment">#version 300 es
+  precision mediump float;
+
+  in vec3 vColor;
+  out vec4 fColor;
+
+  void main() {
+    fColor = vec4(vColor, 1.0);
+  }
+  </script>
+
+  <!-- Blinn-Phong shaders -->
+  <script id="blinn-vertex-shader" type="x-shader/x-vertex">#version 300 es
+  in vec4 aPosition;
+  in vec3 aNormal;
+
+  uniform mat4 uModelMatrix;
+  uniform mat4 uViewMatrix;
+  uniform mat4 uProjectionMatrix;
+  uniform mat3 uNormalMatrix;
+
+  out vec3 vWorldPos;
+  out vec3 vNormal;
+
+  void main() {
+    vec4 worldPos4 = uModelMatrix * aPosition;
+    vWorldPos = worldPos4.xyz;
+    vNormal = normalize(uNormalMatrix * aNormal);
+    gl_Position = uProjectionMatrix * uViewMatrix * worldPos4;
+  }
+  </script>
+
+  <script id="blinn-fragment-shader" type="x-shader/x-fragment">#version 300 es
+  precision mediump float;
+
+  in vec3 vWorldPos;
+  in vec3 vNormal;
+
+  uniform vec3 uLightPosition;
+  uniform vec3 uEyePosition;
+  uniform vec3 uAmbientColor;
+  uniform vec3 uDiffuseColor;
+  uniform vec3 uSpecularColor;
+  uniform vec3 uLightColor;
+  uniform float uShininess;
+
+  out vec4 fColor;
+
+  void main() {
+    vec3 N = normalize(vNormal);
+    vec3 L = normalize(uLightPosition - vWorldPos);
+    vec3 V = normalize(uEyePosition - vWorldPos);
+    vec3 H = normalize(L + V);
+
+    float diff = max(dot(N, L), 0.0);
+    float spec = 0.0;
+    if (diff > 0.0) {
+      spec = pow(max(dot(N, H), 0.0), uShininess);
+    }
+
+    vec3 ambient = uAmbientColor * 0.25;
+    vec3 diffuse = diff * uDiffuseColor * uLightColor;
+    vec3 specular = spec * uSpecularColor * uLightColor;
+
+    vec3 color = ambient + diffuse + specular;
+    fColor = vec4(color, 1.0);
+  }
+  </script>
+
+  <!-- Cook-Torrance shaders -->
+  <script id="cook-vertex-shader" type="x-shader/x-vertex">#version 300 es
+  in vec4 aPosition;
+  in vec3 aNormal;
+
+  uniform mat4 uModelMatrix;
+  uniform mat4 uViewMatrix;
+  uniform mat4 uProjectionMatrix;
+  uniform mat3 uNormalMatrix;
+
+  out vec3 vWorldPos;
+  out vec3 vNormal;
+
+  void main() {
+    vec4 worldPos4 = uModelMatrix * aPosition;
+    vWorldPos = worldPos4.xyz;
+    vNormal = normalize(uNormalMatrix * aNormal);
+    gl_Position = uProjectionMatrix * uViewMatrix * worldPos4;
+  }
+  </script>
+
+  <script id="cook-fragment-shader" type="x-shader/x-fragment">#version 300 es
+  precision highp float;
+
+  in vec3 vWorldPos;
+  in vec3 vNormal;
+
+  uniform vec3 uLightPosition;
+  uniform vec3 uEyePosition;
+  uniform vec3 uBaseColor;
+  uniform vec3 uLightColor;
+  uniform float uRoughness;
+  uniform float uMetallic;
+
+  out vec4 fColor;
+
+  const float PI = 3.14159265359;
+
+  float distributionGGX(vec3 N, vec3 H, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+
+    float num = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return num / max(denom, 0.000001);
+  }
+
+  float geometrySchlickGGX(float NdotV, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+
+    float num = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+    return num / max(denom, 0.000001);
+  }
+
+  float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx1 = geometrySchlickGGX(NdotV, roughness);
+    float ggx2 = geometrySchlickGGX(NdotL, roughness);
+    return ggx1 * ggx2;
+  }
+
+  vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+  }
+
+  void main() {
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(uEyePosition - vWorldPos);
+    vec3 L = normalize(uLightPosition - vWorldPos);
+    vec3 H = normalize(V + L);
+
+    float distance = length(uLightPosition - vWorldPos);
+    float attenuation = 1.0 / (1.0 + 0.15 * distance * distance);
+    vec3 radiance = uLightColor * attenuation;
+
+    vec3 F0 = vec3(0.04);
+    F0 = mix(F0, uBaseColor, uMetallic);
+
+    float NDF = distributionGGX(N, H, uRoughness);
+    float G = geometrySmith(N, V, L, uRoughness);
+    vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+    vec3 numerator = NDF * G * F;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+    vec3 specular = numerator / denominator;
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= (1.0 - uMetallic);
+
+    float NdotL = max(dot(N, L), 0.0);
+    vec3 diffuse = (kD * uBaseColor / PI);
+
+    vec3 color = (diffuse + specular) * radiance * NdotL;
+    color += 0.08 * uBaseColor;
+
+    color = color / (color + vec3(1.0));
+    color = pow(color, vec3(1.0 / 2.2));
+
+    fColor = vec4(color, 1.0);
+  }
+  </script>
+
+  <script>
+    "use strict";
+
+    let canvas;
+    let gl;
+
+    let sphereData;
+    let positionBuffer;
+    let normalBuffer;
+
+    let programs = {};
+    let currentModel = "gouraud";
+
+    let angle = 0.0;
+    let rotationSpeed = 1.0;
+
+    const eye = [0.0, 0.0, 4.0];
+    const lightPosition = [2.5, 2.0, 2.0];
+
+    const material = {
+      ambient: [0.9, 0.35, 0.2],
+      diffuse: [0.9, 0.35, 0.2],
+      specular: [1.0, 1.0, 1.0],
+      shininess: 40.0,
+      baseColor: [0.9, 0.35, 0.2],
+      roughness: 0.32,
+      metallic: 0.05
+    };
+
+    window.onload = function init() {
+      canvas = document.getElementById("gl-canvas");
+      gl = canvas.getContext("webgl2");
+      if (!gl) {
+        alert("WebGL 2.0 isn't available");
+        return;
+      }
+
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.enable(gl.DEPTH_TEST);
+
+      sphereData = makeSphere(40, 40);
+      setupBuffers();
+      setupPrograms();
+      setupControls();
+
+      render();
+    };
+
+    function setupControls() {
+      document.getElementById("shadingMenu").onchange = function () {
+        currentModel = this.value;
+      };
+
+      document.getElementById("rotationSlider").oninput = function () {
+        rotationSpeed = parseFloat(this.value);
+      };
+    }
+
+    function setupBuffers() {
+      positionBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sphereData.positions), gl.STATIC_DRAW);
+
+      normalBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sphereData.normals), gl.STATIC_DRAW);
+    }
+
+    function setupPrograms() {
+      programs.gouraud = makeProgram("gouraud-vertex-shader", "gouraud-fragment-shader");
+      programs.blinn = makeProgram("blinn-vertex-shader", "blinn-fragment-shader");
+      programs.cook = makeProgram("cook-vertex-shader", "cook-fragment-shader");
+    }
+
+    function makeProgram(vertexId, fragmentId) {
+      const vertexSource = document.getElementById(vertexId).text.trim();
+      const fragmentSource = document.getElementById(fragmentId).text.trim();
+
+      const vertexShader = compileShader(gl.VERTEX_SHADER, vertexSource);
+      const fragmentShader = compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+
+      const program = gl.createProgram();
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(program));
+        alert("Shader program failed to link.");
+      }
+
+      return program;
+    }
+
+    function compileShader(type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(shader));
+        alert("Shader failed to compile.");
+      }
+
+      return shader;
+    }
+
+    function bindAttributes(program) {
+      const positionLoc = gl.getAttribLocation(program, "aPosition");
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      gl.vertexAttribPointer(positionLoc, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(positionLoc);
+
+      const normalLoc = gl.getAttribLocation(program, "aNormal");
+      gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+      gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(normalLoc);
+    }
+
+    function render() {
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      angle += 0.01 * rotationSpeed;
+
+      const modelMatrix = multiply(translate(0.0, 0.0, 0.0), rotateY(angle));
+      const viewMatrix = lookAt(eye, [0, 0, 0], [0, 1, 0]);
+      const projectionMatrix = perspective(Math.PI / 4, canvas.width / canvas.height, 0.1, 100.0);
+      const normalMatrix = makeNormalMatrix(modelMatrix);
+
+      const program = programs[currentModel];
+      gl.useProgram(program);
+      bindAttributes(program);
+
+      setCommonUniforms(program, modelMatrix, viewMatrix, projectionMatrix, normalMatrix);
+
+      if (currentModel === "gouraud" || currentModel === "blinn") {
+        gl.uniform3fv(gl.getUniformLocation(program, "uAmbientColor"), material.ambient);
+        gl.uniform3fv(gl.getUniformLocation(program, "uDiffuseColor"), material.diffuse);
+        gl.uniform3fv(gl.getUniformLocation(program, "uSpecularColor"), material.specular);
+        gl.uniform3fv(gl.getUniformLocation(program, "uLightColor"), [1.0, 1.0, 1.0]);
+        gl.uniform1f(gl.getUniformLocation(program, "uShininess"), material.shininess);
+      }
+
+      if (currentModel === "cook") {
+        gl.uniform3fv(gl.getUniformLocation(program, "uBaseColor"), material.baseColor);
+        gl.uniform3fv(gl.getUniformLocation(program, "uLightColor"), [4.0, 4.0, 4.0]);
+        gl.uniform1f(gl.getUniformLocation(program, "uRoughness"), material.roughness);
+        gl.uniform1f(gl.getUniformLocation(program, "uMetallic"), material.metallic);
+      }
+
+      gl.drawArrays(gl.TRIANGLES, 0, sphereData.count);
+
+      requestAnimationFrame(render);
+    }
+
+    function setCommonUniforms(program, modelMatrix, viewMatrix, projectionMatrix, normalMatrix) {
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "uModelMatrix"), false, new Float32Array(modelMatrix));
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "uViewMatrix"), false, new Float32Array(viewMatrix));
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "uProjectionMatrix"), false, new Float32Array(projectionMatrix));
+      gl.uniformMatrix3fv(gl.getUniformLocation(program, "uNormalMatrix"), false, new Float32Array(normalMatrix));
+      gl.uniform3fv(gl.getUniformLocation(program, "uLightPosition"), lightPosition);
+      gl.uniform3fv(gl.getUniformLocation(program, "uEyePosition"), eye);
+    }
+
+    function makeSphere(rows, cols) {
+      const positions = [];
+      const normals = [];
+
+      for (let i = 0; i < rows; i++) {
+        const theta1 = i * Math.PI / rows;
+        const theta2 = (i + 1) * Math.PI / rows;
+
+        for (let j = 0; j < cols; j++) {
+          const phi1 = j * 2.0 * Math.PI / cols;
+          const phi2 = (j + 1) * 2.0 * Math.PI / cols;
+
+          const p1 = spherePoint(theta1, phi1);
+          const p2 = spherePoint(theta2, phi1);
+          const p3 = spherePoint(theta2, phi2);
+          const p4 = spherePoint(theta1, phi2);
+
+          pushTriangle(positions, normals, p1, p2, p3);
+          pushTriangle(positions, normals, p1, p3, p4);
+        }
+      }
+
+      return {
+        positions: positions,
+        normals: normals,
+        count: positions.length / 3
+      };
+    }
+
+    function spherePoint(theta, phi) {
+      const x = Math.sin(theta) * Math.cos(phi);
+      const y = Math.cos(theta);
+      const z = Math.sin(theta) * Math.sin(phi);
+      return [x, y, z];
+    }
+
+    function pushTriangle(positions, normals, a, b, c) {
+      positions.push(a[0], a[1], a[2]);
+      positions.push(b[0], b[1], b[2]);
+      positions.push(c[0], c[1], c[2]);
+
+      normals.push(a[0], a[1], a[2]);
+      normals.push(b[0], b[1], b[2]);
+      normals.push(c[0], c[1], c[2]);
+    }
+
+    // -------- matrix helpers --------
+
+    function identity() {
+      return [
+        1,0,0,0,
+        0,1,0,0,
+        0,0,1,0,
+        0,0,0,1
+      ];
+    }
+
+    function translate(tx, ty, tz) {
+      return [
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        tx, ty, tz, 1
+      ];
+    }
+
+    function rotateY(t) {
+      const c = Math.cos(t);
+      const s = Math.sin(t);
+      return [
+        c, 0, s, 0,
+        0, 1, 0, 0,
+       -s, 0, c, 0,
+        0, 0, 0, 1
+      ];
+    }
+
+    function perspective(fovy, aspect, near, far) {
+      const f = 1.0 / Math.tan(fovy / 2.0);
+      return [
+        f / aspect, 0, 0, 0,
+        0, f, 0, 0,
+        0, 0, (far + near) / (near - far), -1,
+        0, 0, (2 * far * near) / (near - far), 0
+      ];
+    }
+
+    function normalize(v) {
+      const len = Math.hypot(v[0], v[1], v[2]);
+      return [v[0] / len, v[1] / len, v[2] / len];
+    }
+
+    function subtract(a, b) {
+      return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    }
+
+    function cross(a, b) {
+      return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0]
+      ];
+    }
+
+    function dot(a, b) {
+      return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    }
+
+    function lookAt(eye, at, up) {
+      const z = normalize(subtract(eye, at));
+      const x = normalize(cross(up, z));
+      const y = cross(z, x);
+
+      return [
+        x[0], y[0], z[0], 0,
+        x[1], y[1], z[1], 0,
+        x[2], y[2], z[2], 0,
+        -dot(x, eye), -dot(y, eye), -dot(z, eye), 1
+      ];
+    }
+
+    function multiply(a, b) {
+      const result = new Array(16).fill(0);
+      for (let col = 0; col < 4; col++) {
+        for (let row = 0; row < 4; row++) {
+          for (let k = 0; k < 4; k++) {
+            result[col * 4 + row] += a[k * 4 + row] * b[col * 4 + k];
+          }
+        }
+      }
+      return result;
+    }
+
+    function makeNormalMatrix(m) {
+      return [
+        m[0], m[1], m[2],
+        m[4], m[5], m[6],
+        m[8], m[9], m[10]
+      ];
+    }
+  </script>
+</body>
+</html>

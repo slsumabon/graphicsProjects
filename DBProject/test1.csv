@@ -1,0 +1,16 @@
+e
+c
+r,1,dallas,houston,TX,TX,05:00,0,10
+r,2,houston,dallas,TX,TX,05:15,0,10
+r,3,dallas,tulsa,TX,OK,06:10,1,10
+t,1,10:00,0,0
+t,1,12:00,0,0
+t,2,9:00,0,0
+t,2,11:00,0,0
+t,3,14:35,1,0 
+R,1
+R,3
+T,1,1
+L,dallas,TX,3
+N
+C,dallas,tx,houston,tx,5

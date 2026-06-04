@@ -1,0 +1,320 @@
+
+<html>
+
+<!-- VERTEX SHADER SOURCE CODE: Written in GLSL -->
+<script id="vertex-shader" type="x-shader/x-vertex">
+#version 300 es
+
+in vec4 aPosition;
+
+void main()
+{
+  gl_Position = aPosition;
+  gl_PointSize = 20.0;
+}
+</script>
+
+<!-- FRAGMENT SHADER SOURCE CODE: Written in GLSL -->
+<script id="fragment-shader" type="x-shader/x-fragment">
+#version 300 es
+
+precision mediump float;
+uniform vec4 uColor;
+out vec4  fColor;
+
+void main()
+{
+    fColor = uColor;
+}
+</script>
+
+<canvas id="gl-canvas" width="512" height="512"> </canvas>
+
+<!-- Written in Javascript -->
+<script>
+
+
+// This compiles and links the shaders to create a GPU program object
+// The GLSL code above is parsed and provided as the source code
+function initShaders( gl, vertexShaderId, fragmentShaderId )
+{
+    var vertShdr;
+    var fragShdr;
+
+    var vertElem = document.getElementById( vertexShaderId );
+    if ( !vertElem ) {
+        alert( "Unable to load vertex shader " + vertexShaderId );
+        return -1;
+    }
+    else {
+        vertShdr = gl.createShader( gl.VERTEX_SHADER );
+        gl.shaderSource( vertShdr, vertElem.textContent.replace(/^\s+|\s+$/g, '' ));
+        gl.compileShader( vertShdr );
+        if ( !gl.getShaderParameter(vertShdr, gl.COMPILE_STATUS) ) {
+            var msg = "Vertex shader failed to compile.  The error log is:"
+        	+ "<pre>" + gl.getShaderInfoLog( vertShdr ) + "</pre>";
+            alert( msg );
+            return -1;
+        }
+    }
+
+    var fragElem = document.getElementById( fragmentShaderId );
+    if ( !fragElem ) {
+        alert( "Unable to load vertex shader " + fragmentShaderId );
+        return -1;
+    }
+    else {
+        fragShdr = gl.createShader( gl.FRAGMENT_SHADER );
+        gl.shaderSource( fragShdr, fragElem.textContent.replace(/^\s+|\s+$/g, '' ) );
+        gl.compileShader( fragShdr );
+        if ( !gl.getShaderParameter(fragShdr, gl.COMPILE_STATUS) ) {
+            var msg = "Fragment shader failed to compile.  The error log is:"
+        	+ "<pre>" + gl.getShaderInfoLog( fragShdr ) + "</pre>";
+            alert( msg );
+            return -1;
+        }
+    }
+
+    var program = gl.createProgram();
+    gl.attachShader( program, vertShdr );
+    gl.attachShader( program, fragShdr );
+    gl.linkProgram( program );
+
+    if ( !gl.getProgramParameter(program, gl.LINK_STATUS) ) {
+        var msg = "Shader program failed to link.  The error log is:"
+            + "<pre>" + gl.getProgramInfoLog( program ) + "</pre>";
+        alert( msg );
+        return -1;
+    }
+
+    return program;
+}
+
+
+// EXECUTION: Code executes starting here when we launch this file
+window.onload = function init()
+{
+    canvas = document.getElementById( "gl-canvas" );
+
+    //
+    //   Grab the section of the screen for drawing.  
+    //   All graphic output is within the canvas
+    //
+    
+    gl = canvas.getContext('webgl2');
+    if (!gl) { alert( "WebGL 2.0 isn't available" ); }
+
+    //
+    //  Initialize our data for a single triangle
+    //
+
+
+    ////////////////////////////////////////////////////////////////////////////////  
+    //  Load shaders and initialize attribute buffers
+    //
+    program = initShaders( gl, "vertex-shader", "fragment-shader" );
+    gl.useProgram( program );
+    
+    
+    ////////////////////////////////////////////////////////////////////////////////   
+    // Define shapes (initialize points defining a triangle)
+    // The GPU expects typed arrays and uses 4D points (x,y,z,w)
+   
+    // Crust Points
+    var N = 100;              
+    var r = 0.8;             
+    var points = new Float32Array(2 * N);
+
+    for (var i = 0; i < N; i++) {
+        let x = r * Math.cos(i * 2 * Math.PI / N);
+        let y = r * Math.sin(i * 2 * Math.PI / N);
+        points[2 * i]     = x;
+        points[2 * i + 1] = y;
+    }
+
+
+
+    
+   ////////////////////////////////////////////////////////////////////////////////   
+   // Load the data into the GPU Buffers
+   //
+    var pointsBuffer = gl.createBuffer();
+    gl.bindBuffer( gl.ARRAY_BUFFER, pointsBuffer );
+    gl.bufferData( gl.ARRAY_BUFFER, points, gl.STATIC_DRAW );
+
+    // Associate out shader variables with our data buffer
+
+    var aPosition = gl.getAttribLocation( program, "aPosition" );
+    gl.vertexAttribPointer( aPosition, 2, gl.FLOAT, false, 0, 0);  
+    gl.enableVertexAttribArray( aPosition );  
+
+    var uColor_location = gl.getUniformLocation(program, "uColor");
+       
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Configure WebGL settings and draw
+    //
+      // Configure area of canvas to map framebuffer
+    gl.viewport( 0, 0, canvas.width, canvas.height ); // 
+    
+    // Configure color to use to clear all pixels    
+    gl.clearColor( 0.0, 0.0, 0.0, 1.0 );    // Format: R, G, B, A  Normalized [0.0,1.0]   
+
+    // Render
+    gl.clear(gl.COLOR_BUFFER_BIT);     // Clear all pixels in the framebuffer
+
+    gl.uniform4fv(uColor_location, [0.85, 0.70, 0.30, 1.0]);
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, N);
+
+    // Tomato Sauce Points
+    var r2 = 0.70;
+    var p2 = new Float32Array(2 * N);
+
+    for (var i = 0; i < N; i++) {
+        let x = r2 * Math.cos(i * 2 * Math.PI / N);
+        let y = r2 * Math.sin(i * 2 * Math.PI / N);
+        p2[2*i] = x;
+        p2[2*i + 1] = y;
+    }
+
+    gl.bindBuffer( gl.ARRAY_BUFFER, pointsBuffer );
+    gl.bufferData( gl.ARRAY_BUFFER, p2, gl.STATIC_DRAW );
+
+    gl.uniform4fv( uColor_location, [0.70, 0.09, 0.08, 1.0] );
+    gl.drawArrays( gl.TRIANGLE_FAN, 0, N );
+
+    // Cheese Points
+    
+    var r3 = 0.65;
+    var p3 = new Float32Array(2 * N);
+
+    for (var i = 0; i < N; i++) {
+        let x = r3 * Math.cos(i * 2 * Math.PI / N);
+        let y = r3 * Math.sin(i * 2 * Math.PI / N);
+        p3[2*i] = x;
+        p3[2*i + 1] = y;
+    }
+
+    gl.bindBuffer( gl.ARRAY_BUFFER, pointsBuffer );
+    gl.bufferData( gl.ARRAY_BUFFER, p3, gl.STATIC_DRAW );
+
+    gl.uniform4fv( uColor_location, [0.95, 0.90, 0.80, 1.0] );
+    gl.drawArrays( gl.TRIANGLE_FAN, 0, N );
+
+    // Pepperoni Points
+    var p4 = new Float32Array([  
+        -0.2, 0.45,
+        0.2, 0.40,
+        0.0,  0.1,   
+        -0.25, 0.2,   
+        0.25, 0.2,
+        -0.5, 0.0, 
+        0.35, 0.05,    
+        -0.15, -0.2, 
+        0.15, -0.1, 
+        0.25, -0.4,
+        0.4, -0.2,
+        -0.4, -0.35
+
+    ]);
+
+    gl.bindBuffer( gl.ARRAY_BUFFER, pointsBuffer );
+    gl.bufferData( gl.ARRAY_BUFFER, p4, gl.STATIC_DRAW );
+
+    gl.uniform4fv(uColor_location, [1.0, 0.0, 0.3, 1]);
+    gl.drawArrays( gl.POINTS, 0,  12);
+
+    // Banana Peppers Points
+    var p5 = new Float32Array([
+
+    0.16, 0.41,
+    0.13, 0.51,
+    0.12, 0.41,
+
+    -0.26, 0.46,
+    -0.28, 0.56,
+    -0.3, 0.46,
+    
+    -0.1, -0.2,
+    -0.08, 0.0,
+    -0.2, -0.2,
+
+    0.26, -0.06,
+    0.23, 0.06,
+    0.3, -0.06,
+
+    -0.4, 0.1,
+    -0.4, 0.2,
+     -0.5, 0.1,
+
+    -0.3, -0.35,
+    -0.26, -0.4,
+    -0.26, -0.5,
+
+    0.5, -0.5,
+    0.38, -0.36,
+    0.36, -0.46,
+
+ 
+    0.36, 0.36,
+    0.33, 0.46,
+    0.31, 0.36,
+
+
+    0.04, -0.36,
+    -0.03, -0.3,
+     -0.1, -0.4,
+
+    0.06, 0.06,
+    0.03, 0.2,
+    0.04, 0.07
+]);
+
+gl.bindBuffer( gl.ARRAY_BUFFER, pointsBuffer );
+gl.bufferData( gl.ARRAY_BUFFER, p5, gl.STATIC_DRAW );
+
+gl.uniform4fv(uColor_location, [1.0, 1.0, 0.0, 1]);    
+gl.drawArrays(gl.TRIANGLES, 0, 30); 
+
+//Slices points
+var p6 = new Float32Array([  
+    0.0,  0.0,
+    0.8,  0.0,
+
+    0.0,  0.0,
+    0.57,  0.57,
+
+    0.0,  0.0,
+    0.0,  0.8,
+
+    0.0,  0.0,
+    -0.57,  0.57,
+
+    0.0,  0.0,
+    -0.8,  0.0,
+
+    0.0,  0.0,
+    -0.57, -0.57,
+
+    0.0,  0.0,
+    0.0, -0.8,
+
+    0.0,  0.0,
+    0.57, -0.57
+
+]);
+
+gl.bindBuffer(gl.ARRAY_BUFFER, pointsBuffer);
+gl.bufferData(gl.ARRAY_BUFFER, p6, gl.STATIC_DRAW);
+
+gl.uniform4fv(uColor_location, [0, 0, 0, 1]);
+gl.drawArrays(gl.LINES, 0, 16);
+    
+
+
+};
+
+
+</script>
+
+</html>

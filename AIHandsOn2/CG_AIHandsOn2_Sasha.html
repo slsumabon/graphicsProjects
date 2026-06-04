@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebGL2 3D City Scene with Camera Slider</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      color: white;
+    }
+
+    .controls {
+      width: 512px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 14px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    canvas {
+      border: 1px solid #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <label for="angleSlider">Camera Angle</label>
+    <input type="range" id="angleSlider" min="-180" max="180" value="25" />
+  </div>
+
+  <canvas id="glcanvas" width="512" height="512"></canvas>
+
+  <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
+  precision mediump float;
+
+  in vec3 aPosition;
+
+  uniform mat4 uModel;
+  uniform mat4 uView;
+  uniform mat4 uProjection;
+
+  void main() {
+      gl_Position = uProjection * uView * uModel * vec4(aPosition, 1.0);
+  }
+  </script>
+
+  <script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
+  precision mediump float;
+
+  uniform vec4 uColor;
+  out vec4 fColor;
+
+  void main() {
+      fColor = uColor;
+  }
+  </script>
+
+  <script>
+    const canvas = document.getElementById("glcanvas");
+    const gl = canvas.getContext("webgl2");
+    const angleSlider = document.getElementById("angleSlider");
+
+    if (!gl) {
+      alert("WebGL 2.0 is not supported in your browser.");
+    }
+
+    // "the viewing volume and perspective projection"
+    // This program demonstrates the viewing volume and perspective projection
+    // by using a perspective matrix for a simple 3D city scene.
+
+    function compileShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+      }
+      return shader;
+    }
+
+    function createProgram(gl, vertexSource, fragmentSource) {
+      const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexSource);
+      const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+
+      const program = gl.createProgram();
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(program));
+        gl.deleteProgram(program);
+        return null;
+      }
+
+      return program;
+    }
+
+    const vertexSource = document.getElementById("vertex-shader").textContent;
+    const fragmentSource = document.getElementById("fragment-shader").textContent;
+    const program = createProgram(gl, vertexSource, fragmentSource);
+
+    gl.useProgram(program);
+
+    const cubeVertices = new Float32Array([
+      -0.5, -0.5,  0.5,
+       0.5, -0.5,  0.5,
+       0.5,  0.5,  0.5,
+      -0.5,  0.5,  0.5,
+
+      -0.5, -0.5, -0.5,
+       0.5, -0.5, -0.5,
+       0.5,  0.5, -0.5,
+      -0.5,  0.5, -0.5,
+    ]);
+
+    const cubeIndices = new Uint16Array([
+      0, 1, 2,   0, 2, 3,
+      1, 5, 6,   1, 6, 2,
+      5, 4, 7,   5, 7, 6,
+      4, 0, 3,   4, 3, 7,
+      3, 2, 6,   3, 6, 7,
+      4, 5, 1,   4, 1, 0
+    ]);
+
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+
+    const vertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, cubeVertices, gl.STATIC_DRAW);
+
+    const indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, cubeIndices, gl.STATIC_DRAW);
+
+    const aPosition = gl.getAttribLocation(program, "aPosition");
+    gl.vertexAttribPointer(aPosition, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(aPosition);
+
+    gl.bindVertexArray(null);
+
+    const uModel = gl.getUniformLocation(program, "uModel");
+    const uView = gl.getUniformLocation(program, "uView");
+    const uProjection = gl.getUniformLocation(program, "uProjection");
+    const uColor = gl.getUniformLocation(program, "uColor");
+
+    function identity() {
+      return new Float32Array([
+        1,0,0,0,
+        0,1,0,0,
+        0,0,1,0,
+        0,0,0,1
+      ]);
+    }
+
+    function multiply(a, b) {
+      const out = new Float32Array(16);
+
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 4; col++) {
+          let sum = 0;
+          for (let k = 0; k < 4; k++) {
+            sum += a[k * 4 + row] * b[col * 4 + k];
+          }
+          out[col * 4 + row] = sum;
+        }
+      }
+      return out;
+    }
+
+    function translation(tx, ty, tz) {
+      return new Float32Array([
+        1,0,0,0,
+        0,1,0,0,
+        0,0,1,0,
+        tx,ty,tz,1
+      ]);
+    }
+
+    function scaling(sx, sy, sz) {
+      return new Float32Array([
+        sx,0,0,0,
+        0,sy,0,0,
+        0,0,sz,0,
+        0,0,0,1
+      ]);
+    }
+
+    function rotationY(angle) {
+      const c = Math.cos(angle);
+      const s = Math.sin(angle);
+      return new Float32Array([
+         c,0,-s,0,
+         0,1, 0,0,
+         s,0, c,0,
+         0,0, 0,1
+      ]);
+    }
+
+    function perspective(fovy, aspect, near, far) {
+      const f = 1.0 / Math.tan(fovy / 2.0);
+      const nf = 1.0 / (near - far);
+
+      return new Float32Array([
+        f / aspect, 0, 0, 0,
+        0, f, 0, 0,
+        0, 0, (far + near) * nf, -1,
+        0, 0, (2.0 * far * near) * nf, 0
+      ]);
+    }
+
+    function normalize(v) {
+      const len = Math.hypot(v[0], v[1], v[2]);
+      return [v[0] / len, v[1] / len, v[2] / len];
+    }
+
+    function subtract(a, b) {
+      return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    }
+
+    function cross(a, b) {
+      return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0]
+      ];
+    }
+
+    function dot(a, b) {
+      return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+    }
+
+    function lookAt(eye, center, up) {
+      const zAxis = normalize(subtract(eye, center));
+      const xAxis = normalize(cross(up, zAxis));
+      const yAxis = cross(zAxis, xAxis);
+
+      return new Float32Array([
+        xAxis[0], yAxis[0], zAxis[0], 0,
+        xAxis[1], yAxis[1], zAxis[1], 0,
+        xAxis[2], yAxis[2], zAxis[2], 0,
+        -dot(xAxis, eye), -dot(yAxis, eye), -dot(zAxis, eye), 1
+      ]);
+    }
+
+    const buildings = [
+      { x: -4.2, z: -1.2, width: 0.85, height: 2.4, depth: 0.85, color: [0.55, 0.20, 0.18, 1.0] },
+      { x: -3.1, z: -0.6, width: 0.85, height: 3.6, depth: 0.85, color: [0.66, 0.22, 0.20, 1.0] },
+      { x: -2.0, z: -1.4, width: 0.85, height: 1.9, depth: 0.85, color: [0.48, 0.24, 0.18, 1.0] },
+      { x: -0.9, z: -0.3, width: 0.85, height: 4.8, depth: 0.85, color: [0.72, 0.26, 0.22, 1.0] },
+      { x:  0.2, z: -1.0, width: 0.85, height: 2.8, depth: 0.85, color: [0.57, 0.24, 0.17, 1.0] },
+      { x:  1.3, z: -0.5, width: 0.85, height: 5.8, depth: 0.85, color: [0.68, 0.18, 0.16, 1.0] },
+      { x:  2.4, z: -1.3, width: 0.85, height: 3.0, depth: 0.85, color: [0.50, 0.21, 0.15, 1.0] },
+      { x:  3.5, z: -0.8, width: 0.85, height: 4.2, depth: 0.85, color: [0.62, 0.30, 0.21, 1.0] },
+      { x: -1.6, z:  0.6, width: 0.85, height: 2.5, depth: 0.85, color: [0.60, 0.18, 0.14, 1.0] },
+      { x:  1.8, z:  0.7, width: 0.85, height: 3.9, depth: 0.85, color: [0.54, 0.26, 0.18, 1.0] }
+    ];
+
+    const sun = {
+      pos: [4.4, 6.0, -4.5],
+      scale: [0.95, 0.95, 0.95],
+      color: [1.0, 0.92, 0.25, 1.0]
+    };
+
+    const roadBase = {
+      pos: [0.0, -0.12, -0.8],
+      scale: [11.0, 0.24, 5.5],
+      color: [0.18, 0.18, 0.20, 1.0]
+    };
+
+    const laneStripeColor = [0.95, 0.85, 0.20, 1.0];
+    const curbColor = [0.45, 0.45, 0.48, 1.0];
+    const windowColor = [0.95, 0.90, 0.65, 1.0];
+    const sideWindowColor = [0.92, 0.85, 0.60, 1.0];
+    const backWindowColor = [0.90, 0.84, 0.58, 1.0];
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.enable(gl.DEPTH_TEST);
+
+    const projection = perspective(Math.PI / 3.0, canvas.width / canvas.height, 0.1, 100.0);
+    gl.uniformMatrix4fv(uProjection, false, projection);
+
+    function drawInstance(position, scaleValues, color, extraRotationY = 0.0) {
+      let model = identity();
+      model = multiply(model, translation(position[0], position[1], position[2]));
+      model = multiply(model, rotationY(extraRotationY));
+      model = multiply(model, scaling(scaleValues[0], scaleValues[1], scaleValues[2]));
+
+      gl.uniformMatrix4fv(uModel, false, model);
+      gl.uniform4fv(uColor, color);
+      gl.drawElements(gl.TRIANGLES, cubeIndices.length, gl.UNSIGNED_SHORT, 0);
+    }
+
+    function drawRoad() {
+      drawInstance(roadBase.pos, roadBase.scale, roadBase.color);
+
+      drawInstance([0.0, 0.03, 1.98], [11.0, 0.08, 0.18], curbColor);
+      drawInstance([0.0, 0.03, -3.58], [11.0, 0.08, 0.18], curbColor);
+
+      const stripeZ = -0.8;
+      const stripeY = 0.02;
+      const stripeWidth = 0.55;
+      const stripeHeight = 0.03;
+      const stripeDepth = 0.16;
+
+      for (let x = -4.5; x <= 4.5; x += 1.2) {
+        drawInstance([x, stripeY, stripeZ], [stripeWidth, stripeHeight, stripeDepth], laneStripeColor);
+      }
+    }
+
+    function drawBuilding(building) {
+      const yCenter = building.height / 2.0;
+
+      drawInstance(
+        [building.x, yCenter, building.z],
+        [building.width, building.height, building.depth],
+        building.color
+      );
+
+      const rows = Math.max(2, Math.floor(building.height));
+      const startY = 0.55;
+      const endY = building.height - 0.45;
+
+      const frontXOffsets = [-building.width * 0.22, building.width * 0.22];
+      const frontZ = building.z + building.depth / 2.0 + 0.03;
+
+      for (let r = 0; r < rows; r++) {
+        const y = startY + (r * (endY - startY) / Math.max(1, rows - 1));
+        for (let c = 0; c < frontXOffsets.length; c++) {
+          drawInstance(
+            [building.x + frontXOffsets[c], y, frontZ],
+            [0.18, 0.22, 0.04],
+            windowColor
+          );
+        }
+      }
+
+      const backXOffsets = [-building.width * 0.22, building.width * 0.22];
+      const backZ = building.z - building.depth / 2.0 - 0.03;
+
+      for (let r = 0; r < rows; r++) {
+        const y = startY + (r * (endY - startY) / Math.max(1, rows - 1));
+        for (let c = 0; c < backXOffsets.length; c++) {
+          drawInstance(
+            [building.x + backXOffsets[c], y, backZ],
+            [0.18, 0.22, 0.04],
+            backWindowColor
+          );
+        }
+      }
+
+      const rightX = building.x + building.width / 2.0 + 0.03;
+      const rightZOffsets = [-building.depth * 0.22, building.depth * 0.22];
+
+      for (let r = 0; r < rows; r++) {
+        const y = startY + (r * (endY - startY) / Math.max(1, rows - 1));
+        for (let s = 0; s < rightZOffsets.length; s++) {
+          drawInstance(
+            [rightX, y, building.z + rightZOffsets[s]],
+            [0.04, 0.22, 0.18],
+            sideWindowColor
+          );
+        }
+      }
+
+      const leftX = building.x - building.width / 2.0 - 0.03;
+      const leftZOffsets = [-building.depth * 0.22, building.depth * 0.22];
+
+      for (let r = 0; r < rows; r++) {
+        const y = startY + (r * (endY - startY) / Math.max(1, rows - 1));
+        for (let s = 0; s < leftZOffsets.length; s++) {
+          drawInstance(
+            [leftX, y, building.z + leftZOffsets[s]],
+            [0.04, 0.22, 0.18],
+            sideWindowColor
+          );
+        }
+      }
+    }
+
+    function render() {
+      gl.clearColor(0.40, 0.70, 1.00, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      const angleDegrees = parseFloat(angleSlider.value);
+      const angleRadians = angleDegrees * Math.PI / 180.0;
+
+      const radius = 12.0;
+      const eyeX = radius * Math.sin(angleRadians);
+      const eyeZ = radius * Math.cos(angleRadians);
+      const eyeY = 4.2;
+
+      const view = lookAt([eyeX, eyeY, eyeZ], [0.0, 2.0, 0.0], [0.0, 1.0, 0.0]);
+      gl.uniformMatrix4fv(uView, false, view);
+
+      gl.useProgram(program);
+      gl.bindVertexArray(vao);
+
+      drawRoad();
+
+      for (let i = 0; i < buildings.length; i++) {
+        drawBuilding(buildings[i]);
+      }
+
+      drawInstance(sun.pos, sun.scale, sun.color);
+
+      gl.bindVertexArray(null);
+    }
+
+    angleSlider.addEventListener("input", render);
+    render();
+  </script>
+</body>
+</html>

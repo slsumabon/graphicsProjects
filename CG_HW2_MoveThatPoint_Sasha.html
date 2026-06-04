@@ -1,0 +1,164 @@
+<html>
+
+<!-- VERTEX SHADER SOURCE CODE: Written in GLSL -->
+<script id="vertex-shader" type="x-shader/x-vertex">
+#version 300 es
+
+in vec4 aPosition;
+uniform vec4 uOffset;
+
+void main()
+{
+    gl_Position = aPosition + uOffset;
+    gl_PointSize = 10.0;
+}
+</script>
+
+<!-- FRAGMENT SHADER SOURCE CODE: Written in GLSL -->
+<script id="fragment-shader" type="x-shader/x-fragment">
+#version 300 es
+
+precision mediump float;
+uniform vec4 uColor;
+out vec4  fColor;
+
+void main()
+{
+    fColor = uColor;
+}
+</script>
+
+<canvas id="gl-canvas" width="512" height="512"></canvas>
+
+<br>
+
+<div> 
+    speed 0%
+    <input id="slider" type="range" min="0" max="100" step="1" value="50" />
+    100%
+</div>
+
+<button onclick="gl.clear(gl.COLOR_BUFFER_BIT)">erase</button>
+
+<!-- Written in Javascript -->
+<script>
+
+// This compiles and links the shaders to create a GPU program object
+function initShaders( gl, vertexShaderId, fragmentShaderId )
+{
+    var vertShdr;
+    var fragShdr;
+
+    var vertElem = document.getElementById( vertexShaderId );
+    vertShdr = gl.createShader( gl.VERTEX_SHADER );
+    gl.shaderSource( vertShdr, vertElem.textContent.trim() );
+    gl.compileShader( vertShdr );
+
+    var fragElem = document.getElementById( fragmentShaderId );
+    fragShdr = gl.createShader( gl.FRAGMENT_SHADER );
+    gl.shaderSource( fragShdr, fragElem.textContent.trim() );
+    gl.compileShader( fragShdr );
+
+    var program = gl.createProgram();
+    gl.attachShader( program, vertShdr );
+    gl.attachShader( program, fragShdr );
+    gl.linkProgram( program );
+
+    return program;
+}
+
+
+// EXECUTION: Code executes starting here when we launch this file
+window.onload = function init()
+{
+    canvas = document.getElementById( "gl-canvas" );
+
+    //
+    // Grab the section of the screen for drawing.
+    //
+    gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true });
+    if (!gl) { alert( "WebGL 2.0 isn't available" ); }
+
+    //
+    // Load shaders and initialize attribute buffers
+    //
+    program = initShaders( gl, "vertex-shader", "fragment-shader" );
+    gl.useProgram( program );
+
+    //
+    // Define geometry: a single point at the origin
+    //
+    var points = new Float32Array([
+        0.0, 0.0
+    ]);
+
+    //
+    // Load the data into the GPU buffer
+    //
+    var pointsBuffer = gl.createBuffer();
+    gl.bindBuffer( gl.ARRAY_BUFFER, pointsBuffer );
+    gl.bufferData( gl.ARRAY_BUFFER, points, gl.STATIC_DRAW );
+
+    //
+    // Associate shader variables with buffer data
+    //
+    var aPosition = gl.getAttribLocation( program, "aPosition" );
+    gl.vertexAttribPointer( aPosition, 2, gl.FLOAT, false, 0, 0 );
+    gl.enableVertexAttribArray( aPosition );
+
+    var uColor_location  = gl.getUniformLocation(program, "uColor");
+    var uOffset_location = gl.getUniformLocation(program, "uOffset");
+
+    //
+    // Configure WebGL
+    //
+    gl.viewport( 0, 0, canvas.width, canvas.height );
+    gl.clearColor( 0.75, 0.9, 1.0, 1.0 );   
+    gl.clear( gl.COLOR_BUFFER_BIT );
+
+    //
+    // Animation variables
+    //
+    t = 0.0;               
+    speed = 0.008;          
+
+    //
+    // Render loop
+    //
+    function render()
+    {
+        t += speed;   
+
+        var r = 0.8 * Math.sin(15.0 * t);
+        var x = r * Math.cos(t);
+        var y = r * Math.sin(t);
+
+
+        gl.uniform4f(uOffset_location, x, y, 0.0, 0.0);
+
+        
+        var pinkShift = 0.7 + 0.5 * Math.cos(t);
+        var r  = 1.0;
+        var g = 0.25 + 0.45 * pinkShift;
+        var b  = 0.45 + 0.45 * pinkShift;
+
+        gl.uniform4f(uColor_location, r, g, b, 1.0);
+
+        gl.drawArrays(gl.POINTS, 0, 1);
+
+        requestAnimationFrame(render);
+    }
+
+    render();
+
+    document.getElementById("slider").oninput = function(event) {
+
+        var sliderValue = event.target.value;
+
+        speed = 0.002 + (sliderValue / 100.0) * 0.03;
+    };
+};
+
+</script>
+
+</html>

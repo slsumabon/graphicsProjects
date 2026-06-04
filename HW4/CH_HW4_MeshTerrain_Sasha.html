@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+
+<body style="background-color:black; color:white;">
+
+<canvas id="gl-canvas" width="512" height="512"> </canvas>
+
+<p> </p>
+<button id = "Button1">Increase Z</button>
+<button id = "Button2">Decrease Z</button>
+<button id = "Button3">Increase R</button>
+<button id = "Button4">Decrease R</button>
+
+<p> </p>
+<button id = "Button5">Increase theta</button>
+<button id = "Button6">Decrease theta</button>
+<button id = "Button7">Increase phi</button>
+<button id = "Button8">Decrease phi</button>
+
+<p> </p>
+<button id = "Button9">Wider</button>
+<button id = "Button10">Narrower</button>
+<button id = "Button11">Higher</button>
+<button id = "Button12">Shorter</button>
+
+<p> </p>
+<script id="vertex-shader" type="x-shader/x-vertex">
+#version 300 es
+
+in vec4 aPosition;
+in vec3 aNormal;
+
+uniform mat4 uModelViewMatrix;
+uniform mat4 uProjectionMatrix;
+uniform mat3 uNormalMatrix;
+
+out vec3 vNormal;
+
+void main()
+{
+    gl_Position = uProjectionMatrix * uModelViewMatrix * aPosition;
+    vNormal = normalize(uNormalMatrix * aNormal);
+}
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+#version 300 es
+
+precision mediump float;
+
+uniform vec4 uColor;
+uniform vec3 uLightDir;
+
+in vec3 vNormal;
+
+out vec4 fColor;
+
+void main()
+{
+    vec3 N = normalize(vNormal);
+    vec3 L = normalize(uLightDir);
+
+    float ambient = 0.35;
+    float diffuse = max(dot(N, L), 0.0);
+
+    vec3 color = uColor.rgb * (ambient + 0.65 * diffuse);
+    fColor = vec4(color, uColor.a);
+}
+</script>
+
+<script src="initShaders-1.js"></script>
+<script src="MVnew-1.js"></script>
+<script src="CG_HW4_MeshTerrain_Sasha.js"></script>
+
+</body>
+</html>

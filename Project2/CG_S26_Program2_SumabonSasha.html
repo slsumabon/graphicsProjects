@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>CG_S26_Program2_SumabonSasha</title>
+    <style>
+        /* AI helped format this */
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #eaf5ff;
+            color: #222;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h2 {
+            margin: 12px 0 8px 0;
+        }
+
+        .wrapper {
+            display: flex;
+            gap: 18px;
+            align-items: flex-start;
+            margin: 10px;
+        }
+
+        #gl-canvas {
+            border: 1px solid #666;
+            background: white;
+        }
+
+        .controls {
+            width: 290px;
+            background: #ffffff;
+            border: 1px solid #b9cde5;
+            padding: 12px;
+        }
+
+        .controls h3 {
+            margin-top: 0;
+            margin-bottom: 8px;
+        }
+
+        .control-row {
+            margin-bottom: 10px;
+        }
+
+        .control-row label {
+            display: block;
+            font-size: 14px;
+            margin-bottom: 3px;
+        }
+
+        .control-row input[type="range"] {
+            width: 100%;
+        }
+
+        button {
+            margin-top: 6px;
+            margin-right: 6px;
+            padding: 6px 10px;
+        }
+
+        p {
+            max-width: 920px;
+            margin: 8px 18px 16px 18px;
+            line-height: 1.35;
+        }
+    </style>
+
+    <script id="vertex-shader" type="x-shader/x-vertex">
+#version 300 es
+
+in vec4 aPosition;
+in vec3 aNormal;
+
+uniform mat4 uModelViewMatrix;
+uniform mat4 uProjectionMatrix;
+uniform mat3 uNormalMatrix;
+
+uniform vec4 uAmbientProduct;
+uniform vec4 uDiffuseProduct;
+uniform vec4 uSpecularProduct;
+uniform vec4 uLightPosition;
+uniform float uShininess;
+uniform vec4 uColor;
+
+out vec4 vColor;
+
+void main()
+{
+    vec3 pos = (uModelViewMatrix * aPosition).xyz;
+    vec3 N = normalize(uNormalMatrix * aNormal);
+
+    // light direction
+    vec3 L;
+    if(uLightPosition.w == 0.0) L = normalize(uLightPosition.xyz);
+    else L = normalize(uLightPosition.xyz - pos);
+
+    // eye direction
+    vec3 E = normalize(-pos);
+    // half vector (highlight direction)
+    vec3 H = normalize(L + E);
+
+    vec4 ambient = uAmbientProduct * uColor;
+
+    float Kd = max(dot(L, N), 0.0);
+    vec4 diffuse = Kd * uDiffuseProduct * uColor;
+
+   // Blinn-Phong lighting model
+    float Ks = pow(max(dot(N, H), 0.0), uShininess);
+    vec4 specular = Ks * uSpecularProduct;
+
+    if(dot(L, N) < 0.0) {
+        specular = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+
+    vColor = ambient + diffuse + specular;
+    vColor.a = 1.0;
+
+    gl_Position = uProjectionMatrix * uModelViewMatrix * aPosition;
+}
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">
+#version 300 es
+precision mediump float;
+
+in vec4 vColor;
+out vec4 fColor;
+
+void main()
+{
+    fColor = vColor;
+}
+    </script>
+</head>
+<body>
+    <h2>May Flowers</h2>
+
+    <div class="wrapper">
+        <canvas id="gl-canvas" width="720" height="720"></canvas>
+
+        <div class="controls">
+            <h3>Controls</h3>
+
+            <div class="control-row">
+                <label for="petalFrontBack">Move Front/Back Petal</label>
+                <input id="petalFrontBack" type="range" min="0" max="80" step="1" value="28">
+            </div>
+
+            <div class="control-row">
+                <label for="petalLeftRight">Move Left/Right Petal</label>
+                <input id="petalLeftRight" type="range" min="0" max="80" step="1" value="24">
+            </div>
+
+            <div class="control-row">
+                <label for="stemBend">Bend Stem</label>
+                <input id="stemBend" type="range" min="-45" max="45" step="1" value="0">
+            </div>
+
+            <div class="control-row">
+                <label for="flowerX">Flower Move X</label>
+                <input id="flowerX" type="range" min="-4" max="4" step="0.1" value="0">
+            </div>
+
+            <div class="control-row">
+                <label for="flowerZ">Flower Move Y</label>
+                <input id="flowerZ" type="range" min="-4" max="4" step="0.1" value="0">
+            </div>
+
+            <div class="control-row">
+                <label for="sunAngle">Sun Position</label>
+                <input id="sunAngle" type="range" min="-120" max="120" step="1" value="10">
+            </div>
+
+            <div class="control-row">
+                <label for="cameraTheta">Camera Up/Down</label>
+                <input id="cameraTheta" type="range" min="10" max="85" step="1" value="35">
+            </div>
+
+            <div class="control-row">
+                <label for="cameraPhi">Move Camera Around</label>
+                <input id="cameraPhi" type="range" min="0" max="360" step="1" value="45">
+            </div>
+
+            <div class="control-row">
+                <label for="cameraRadius">Camera Distance</label>
+                <input id="cameraRadius" type="range" min="6" max="22" step="0.5" value="12">
+            </div>
+
+            <button id="toggleAnimation">Surprise!</button>
+            <button id="resetScene">Reset</button>
+        </div>
+    </div>
+
+    <script src="MVnew-1.js"></script>
+    <script src="initShaders-1.js"></script>
+    <script src="CG_S26_Program2_SumabonSasha.js"></script>
+</body>
+</html>
